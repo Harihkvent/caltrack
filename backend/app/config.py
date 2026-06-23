@@ -6,6 +6,7 @@ class Settings(BaseSettings):
 
     app_name: str = "caltrack-backend"
     app_env: str = "dev"
+    app_cors_origins: str = "*"
 
     database_url: str = "postgresql://localhost/postgres"
 

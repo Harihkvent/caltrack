@@ -6,15 +6,18 @@ import asyncpg
 
 from app.models.meal import CreateMealRequest, MealResponse, SummaryResponse
 from app.repos.meals_repo import MealsRepo
+from app.repos.profiles_repo import ProfilesRepo
 from app.services.estimator import EstimatorService
 
 
 class MealService:
     def __init__(self, pool: asyncpg.Pool, estimator: EstimatorService):
         self.repo = MealsRepo(pool)
+        self.profiles_repo = ProfilesRepo(pool)
         self.estimator = estimator
 
     async def create_meal(self, user_id: UUID, request: CreateMealRequest) -> MealResponse:
+        await self.profiles_repo.ensure_profile(user_id)
         estimate, raw = await self.estimator.estimate(request.source, request.raw_input, request.photo_url)
         return await self.repo.insert_meal(
             user_id=user_id,
