@@ -1,0 +1,36 @@
+export type FoodItem = {
+  name: string;
+  qty?: string | null;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+};
+
+export type Meal = {
+  id: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  food_items: FoodItem[];
+  logged_at: string;
+};
+
+export type SummaryByDay = {
+  day: string;
+  calories: number;
+};
+
+export type Summary = {
+  total_calories: number;
+  avg_calories: number;
+  by_day: SummaryByDay[];
+};
+
+export type Profile = {
+  id: string;
+  display_name: string;
+  daily_calorie_goal: number;
+  daily_protein_goal_g: number;
+};
