@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 
@@ -7,7 +9,7 @@ class GoalsPatchRequest(BaseModel):
 
 
 class ProfileResponse(BaseModel):
-    id: str
+    id: UUID
     display_name: str
     daily_calorie_goal: int
     daily_protein_goal_g: int

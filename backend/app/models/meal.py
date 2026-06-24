@@ -8,11 +8,14 @@ from pydantic import BaseModel, Field, model_validator
 
 class FoodItem(BaseModel):
     name: str
-    qty: str | None = None
+    qty: str | int | None = None
     calories: int
     protein_g: Decimal = Decimal("0")
     carbs_g: Decimal = Decimal("0")
     fat_g: Decimal = Decimal("0")
+    sugar_g: Decimal = Decimal("0")
+    fiber_g: Decimal = Decimal("0")
+    sodium_mg: Decimal = Decimal("0")
 
 
 class MealEstimate(BaseModel):
@@ -21,6 +24,9 @@ class MealEstimate(BaseModel):
     protein_g: Decimal = Decimal("0")
     carbs_g: Decimal = Decimal("0")
     fat_g: Decimal = Decimal("0")
+    sugar_g: Decimal = Decimal("0")
+    fiber_g: Decimal = Decimal("0")
+    sodium_mg: Decimal = Decimal("0")
     confidence: Decimal | None = Field(default=None, ge=0, le=1)
 
 
@@ -45,6 +51,9 @@ class MealResponse(BaseModel):
     protein_g: Decimal
     carbs_g: Decimal
     fat_g: Decimal
+    sugar_g: Decimal
+    fiber_g: Decimal
+    sodium_mg: Decimal
     food_items: list[FoodItem]
     logged_at: datetime
 

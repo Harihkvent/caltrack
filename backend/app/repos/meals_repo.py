@@ -25,12 +25,13 @@ class MealsRepo:
         query = """
             insert into meals (
                 user_id, idempotency_key, source, raw_input, photo_url,
-                food_items, calories, protein_g, carbs_g, fat_g, confidence, ai_raw_response
+                food_items, calories, protein_g, carbs_g, fat_g, confidence, ai_raw_response,
+                sugar_g, fiber_g, sodium_mg
             )
-            values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12::jsonb)
+            values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15)
             on conflict (user_id, idempotency_key) do update
             set idempotency_key = excluded.idempotency_key
-            returning id, calories, protein_g, carbs_g, fat_g, food_items, logged_at
+            returning id, calories, protein_g, carbs_g, fat_g, sugar_g, fiber_g, sodium_mg, food_items, logged_at
         """
         row = await self.pool.fetchrow(
             query,
@@ -46,20 +47,32 @@ class MealsRepo:
             estimate.fat_g,
             estimate.confidence,
             json.dumps(ai_raw_response),
+            estimate.sugar_g,
+            estimate.fiber_g,
+            estimate.sodium_mg,
         )
-        return MealResponse(**dict(row))
+        data = dict(row)
+        if isinstance(data.get("food_items"), str):
+            data["food_items"] = json.loads(data["food_items"])
+        return MealResponse(**data)
 
     async def get_meals_for_day(self, user_id: UUID, day: date) -> list[MealResponse]:
         start = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
         end = start + timedelta(days=1)
         query = """
-            select id, calories, protein_g, carbs_g, fat_g, food_items, logged_at
+            select id, calories, protein_g, carbs_g, fat_g, sugar_g, fiber_g, sodium_mg, food_items, logged_at
             from meals
             where user_id = $1 and logged_at >= $2 and logged_at < $3
             order by logged_at desc
         """
         rows = await self.pool.fetch(query, user_id, start, end)
-        return [MealResponse(**dict(row)) for row in rows]
+        res = []
+        for r in rows:
+            data = dict(r)
+            if isinstance(data.get("food_items"), str):
+                data["food_items"] = json.loads(data["food_items"])
+            res.append(MealResponse(**data))
+        return res
 
     async def get_summary(self, user_id: UUID, range_name: Literal["week", "month"]) -> SummaryResponse:
         days = 7 if range_name == "week" else 30

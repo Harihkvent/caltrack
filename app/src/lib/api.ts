@@ -1,5 +1,5 @@
 import type { Session } from "@supabase/supabase-js";
-import type { Meal, Profile, Summary } from "../types";
+import type { Meal, Profile, Summary, WeightLog, WaterLog, WaterDailySummary, Exercise, EntryResponse } from "../types";
 
 const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -36,6 +36,22 @@ export function createMeal(
   return request<Meal>(session, "/meals", { method: "POST", body: JSON.stringify(payload) });
 }
 
+export function logEntry(
+  session: Session,
+  payload: {
+    source: "text" | "photo";
+    raw_input?: string;
+    photo_url?: string;
+    idempotency_key: string;
+  }
+) {
+  return request<EntryResponse>(session, "/entries", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function getExercises(session: Session, date: string) {
+  return request<Exercise[]>(session, `/exercises?date=${encodeURIComponent(date)}`);
+}
+
 export function getMeals(session: Session, date: string) {
   return request<Meal[]>(session, `/meals?date=${encodeURIComponent(date)}`);
 }
@@ -57,3 +73,32 @@ export function patchGoals(
     body: JSON.stringify(payload),
   });
 }
+
+export function getWeightHistory(session: Session) {
+  return request<WeightLog[]>(session, "/weight");
+}
+
+export function logWeight(session: Session, weightKg: number) {
+  return request<WeightLog>(session, "/weight", {
+    method: "POST",
+    body: JSON.stringify({ weight_kg: weightKg }),
+  });
+}
+
+export function getWaterLogs(session: Session, date: string) {
+  return request<WaterDailySummary>(session, `/water?date=${encodeURIComponent(date)}`);
+}
+
+export function logWater(session: Session, amountMl: number) {
+  return request<WaterLog>(session, "/water", {
+    method: "POST",
+    body: JSON.stringify({ amount_ml: amountMl }),
+  });
+}
+
+export function deleteDayEntries(session: Session, date: string) {
+  return request<{ status: string; message: string }>(session, `/entries?date=${encodeURIComponent(date)}`, {
+    method: "DELETE",
+  });
+}
+

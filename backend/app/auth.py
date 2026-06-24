@@ -19,7 +19,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         )
 
     async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Any]]):
-        if request.url.path in {"/health", "/docs", "/openapi.json", "/redoc"}:
+        if request.method == "OPTIONS" or request.url.path in {"/health", "/docs", "/openapi.json", "/redoc"}:
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization", "")
@@ -32,12 +32,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
             payload = jwt.decode(
                 token,
                 signing_key.key,
-                algorithms=["RS256"],
+                algorithms=["RS256", "ES256"],
                 audience=settings.supabase_jwt_audience,
                 options={"verify_exp": True},
             )
-        except Exception:
-            return JSONResponse({"detail": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
+        except Exception as e:
+            print(f"Token decoding failed: {type(e).__name__}: {e}")
+            return JSONResponse({"detail": f"Invalid token: {e}"}, status_code=status.HTTP_401_UNAUTHORIZED)
 
         sub = payload.get("sub")
         if not sub:

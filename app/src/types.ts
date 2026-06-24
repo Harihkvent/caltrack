@@ -1,10 +1,13 @@
 export type FoodItem = {
   name: string;
-  qty?: string | null;
+  qty?: string | number | null;
   calories: number;
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+  sugar_g: number;
+  fiber_g: number;
+  sodium_mg: number;
 };
 
 export type Meal = {
@@ -13,6 +16,9 @@ export type Meal = {
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+  sugar_g: number;
+  fiber_g: number;
+  sodium_mg: number;
   food_items: FoodItem[];
   logged_at: string;
 };
@@ -34,3 +40,35 @@ export type Profile = {
   daily_calorie_goal: number;
   daily_protein_goal_g: number;
 };
+
+export type WeightLog = {
+  id: string;
+  weight_kg: number;
+  logged_at: string;
+};
+
+export type WaterLog = {
+  id: string;
+  amount_ml: number;
+  logged_at: string;
+};
+
+export type WaterDailySummary = {
+  total_ml: number;
+  logs: WaterLog[];
+};
+
+export type Exercise = {
+  id: string;
+  user_id: string;
+  name: string;
+  calories_burned: number;
+  logged_at: string;
+};
+
+export type EntryResponse = {
+  type: "meal" | "exercise";
+  meal?: Meal;
+  exercise?: Exercise;
+};
+
