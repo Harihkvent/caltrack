@@ -1,7 +1,7 @@
 import type { Session } from "@supabase/supabase-js";
 import type { Meal, Profile, Summary, WeightLog, WaterLog, WaterDailySummary, Exercise, EntryResponse } from "../types";
 
-const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
+const apiBaseUrl = (process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
 async function request<T>(
   session: Session,
