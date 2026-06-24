@@ -14,4 +14,9 @@ jobs:
       - name: Ping backend health
         run: curl -fsS "${{ secrets.BACKEND_HEALTH_URL }}"
       - name: Ping supabase rest
-        run: curl -fsS "${{ secrets.SUPABASE_URL }}/rest/v1/"
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.SUPABASE_URL }}/rest/v1/")
+          if [ "$STATUS" -ne 200 ] && [ "$STATUS" -ne 401 ]; then
+            echo "Error: Supabase returned HTTP status $STATUS"
+            exit 1
+          fi
