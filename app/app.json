@@ -20,6 +20,7 @@
     },
     "web": {
       "favicon": "./assets/favicon.png",
+      "icon": "./assets/icon.png",
       "name": "caltrack",
       "shortName": "caltrack"
     }

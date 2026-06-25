@@ -17,5 +17,10 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash-lite"
 
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
+    groq_vision_model: str = "llama-3.2-11b-vision-preview"
+    primary_provider: str = "groq"  # "groq" or "gemini"; the other is used as fallback
+
 
 settings = Settings()
