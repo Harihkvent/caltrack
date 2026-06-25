@@ -39,3 +39,37 @@ class ExercisesRepo:
         """
         rows = await self.pool.fetch(query, user_id, start, end)
         return [ExerciseResponse(**dict(r)) for r in rows]
+
+    async def delete_exercise(self, user_id: UUID, exercise_id: UUID) -> bool:
+        """Delete an exercise by id, scoped to user_id. Returns True if deleted."""
+        query = "delete from exercises where id = $1 and user_id = $2"
+        result = await self.pool.execute(query, exercise_id, user_id)
+        return result.endswith("1")
+
+    async def update_exercise(
+        self,
+        user_id: UUID,
+        exercise_id: UUID,
+        patch: dict,
+    ) -> ExerciseResponse | None:
+        """Partially update an exercise. Only non-None fields are updated."""
+        allowed = ["name", "calories_burned"]
+        sets = []
+        values: list = []
+        for col in allowed:
+            if col in patch and patch[col] is not None:
+                values.append(patch[col])
+                sets.append(f"{col} = ${len(values)}")
+        if not sets:
+            return None
+        values.extend([exercise_id, user_id])
+        query = f"""
+            update exercises
+            set {', '.join(sets)}
+            where id = ${len(values) - 1} and user_id = ${len(values)}
+            returning id, user_id, name, calories_burned, logged_at
+        """
+        row = await self.pool.fetchrow(query, *values)
+        if row is None:
+            return None
+        return ExerciseResponse(**dict(row))

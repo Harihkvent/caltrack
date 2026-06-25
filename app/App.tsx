@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -27,6 +28,10 @@ import {
   logEntry,
   getExercises,
   deleteDayEntries,
+  deleteMeal,
+  patchMeal,
+  deleteExercise,
+  patchExercise,
 } from "./src/lib/api";
 import { supabase } from "./src/lib/supabase";
 import type { Meal, Profile, Summary, WeightLog, WaterDailySummary, Exercise } from "./src/types";
@@ -115,6 +120,19 @@ export default function App() {
   const [calcActivity, setCalcActivity] = useState<"1.2" | "1.375" | "1.55" | "1.725" | "1.9">("1.2");
   const [calcGoal, setCalcGoal] = useState<"lose" | "maintain" | "gain">("lose");
   const [goalsSuccessMessage, setGoalsSuccessMessage] = useState("");
+
+  // Edit / Delete entry state
+  const [editingEntry, setEditingEntry] = useState<{
+    type: "meal" | "exercise";
+    id: string;
+    calories: string;
+    protein_g: string;
+    carbs_g: string;
+    fat_g: string;
+    name: string;
+    calories_burned: string;
+  } | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Horizontal Date Strip (Last 7 days ending with selectedDate)
   const dateStrip = useMemo(() => {
@@ -300,6 +318,63 @@ export default function App() {
       setError(err instanceof Error ? err.message : "Failed logging entry");
     } finally {
       setSubmittingMeal(false);
+    }
+  }
+
+  // Delete a single meal or exercise entry
+  async function handleDeleteEntry(type: "meal" | "exercise", id: string) {
+    if (!session) return;
+    const doDelete = async () => {
+      try {
+        if (type === "meal") {
+          await deleteMeal(session, id);
+          setMeals((prev) => prev.filter((m) => m.id !== id));
+        } else {
+          await deleteExercise(session, id);
+          setExercises((prev) => prev.filter((e) => e.id !== id));
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to delete entry");
+      }
+    };
+    // Alert.alert doesn't work on web — use window.confirm instead
+    if (Platform.OS === "web") {
+      if (window.confirm(`Delete this ${type}? This cannot be undone.`)) {
+        await doDelete();
+      }
+    } else {
+      Alert.alert(`Delete ${type}?`, "This entry will be permanently removed.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: doDelete },
+      ]);
+    }
+  }
+
+  // Save edits to a meal or exercise
+  async function handleSaveEdit() {
+    if (!session || !editingEntry) return;
+    setSavingEdit(true);
+    try {
+      if (editingEntry.type === "meal") {
+        const updated = await patchMeal(session, editingEntry.id, {
+          calories: Number(editingEntry.calories) || undefined,
+          protein_g: Number(editingEntry.protein_g) || undefined,
+          carbs_g: Number(editingEntry.carbs_g) || undefined,
+          fat_g: Number(editingEntry.fat_g) || undefined,
+        });
+        setMeals((prev) => prev.map((m) => (m.id === editingEntry.id ? updated : m)));
+      } else {
+        const updated = await patchExercise(session, editingEntry.id, {
+          name: editingEntry.name || undefined,
+          calories_burned: Number(editingEntry.calories_burned) || undefined,
+        });
+        setExercises((prev) => prev.map((e) => (e.id === editingEntry.id ? updated : e)));
+      }
+      setEditingEntry(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save changes");
+    } finally {
+      setSavingEdit(false);
     }
   }
 
@@ -658,12 +733,36 @@ export default function App() {
                       <View key={entry.id} style={[styles.mealRowContainer, { borderBottomColor: colors.border }]}>
                         <View style={styles.mealRowHeader}>
                           <Text style={[styles.mealCaloriesText, { color: colors.warning }]}>{entry.calories} kcal</Text>
-                          <Text style={[styles.mealTimeText, { color: colors.textMuted }]}>
-                            {new Date(entry.logged_at).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                            <Text style={[styles.mealTimeText, { color: colors.textMuted }]}>
+                              {new Date(entry.logged_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </Text>
+                            <Pressable
+                              hitSlop={8}
+                              style={{ padding: 4 }}
+                              onPress={() => {
+                                setEditingEntry({
+                                  type: "meal",
+                                  id: entry.id,
+                                  calories: String(entry.calories),
+                                  protein_g: String(Math.round(Number(entry.protein_g))),
+                                  carbs_g: String(Math.round(Number(entry.carbs_g))),
+                                  fat_g: String(Math.round(Number(entry.fat_g))),
+                                  name: "",
+                                  calories_burned: "",
+                                });
+                              }}
+                            >
+                              <Ionicons name="pencil" size={14} color={colors.primary} />
+                            </Pressable>
+                            <Pressable
+                              hitSlop={8}
+                              style={{ padding: 4 }}
+                              onPress={() => handleDeleteEntry("meal", entry.id)}
+                            >
+                              <Ionicons name="trash-outline" size={14} color="#ef4444" />
+                            </Pressable>
+                          </View>
                         </View>
                         {/* Detailed macros & micros breakdown */}
                         <View style={styles.mealDetailsRow}>
@@ -689,28 +788,46 @@ export default function App() {
                     return (
                       <View key={entry.id} style={[styles.mealRowContainer, { borderBottomColor: colors.border }]}>
                         <View style={styles.mealRowHeader}>
-                          <Text style={[styles.mealCaloriesText, { color: colors.success }]}>
-                            -{entry.calories_burned} kcal
-                          </Text>
-                          <Text style={[styles.mealTimeText, { color: colors.textMuted }]}>
-                            {new Date(entry.logged_at).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </Text>
+                          <Text style={[styles.mealCaloriesText, { color: colors.success }]}>-{entry.calories_burned} kcal</Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                            <Text style={[styles.mealTimeText, { color: colors.textMuted }]}>
+                              {new Date(entry.logged_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </Text>
+                            <Pressable
+                              hitSlop={8}
+                              style={{ padding: 4 }}
+                              onPress={() => {
+                                setEditingEntry({
+                                  type: "exercise",
+                                  id: entry.id,
+                                  calories: "",
+                                  protein_g: "",
+                                  carbs_g: "",
+                                  fat_g: "",
+                                  name: entry.name,
+                                  calories_burned: String(entry.calories_burned),
+                                });
+                              }}
+                            >
+                              <Ionicons name="pencil" size={14} color={colors.primary} />
+                            </Pressable>
+                            <Pressable
+                              hitSlop={8}
+                              style={{ padding: 4 }}
+                              onPress={() => handleDeleteEntry("exercise", entry.id)}
+                            >
+                              <Ionicons name="trash-outline" size={14} color="#ef4444" />
+                            </Pressable>
+                          </View>
                         </View>
                         <View style={styles.mealDetailsRow}>
                           <View style={[styles.detailPill, { backgroundColor: isDarkMode ? "#065f46" : "#d1fae5", flexDirection: "row", alignItems: "center" }]}>
                             <Ionicons name="fitness" size={12} color={isDarkMode ? "#10b981" : "#065f46"} style={{ marginRight: 4 }} />
-                            <Text style={{ color: isDarkMode ? "#10b981" : "#065f46", fontSize: 11, fontWeight: "700" }}>
-                              Exercise
-                            </Text>
+                            <Text style={{ color: isDarkMode ? "#10b981" : "#065f46", fontSize: 11, fontWeight: "700" }}>Exercise</Text>
                           </View>
                         </View>
                         <View style={styles.foodItemsContainer}>
-                          <Text style={[styles.foodItemText, { fontWeight: "700", color: colors.text }]}>
-                            {entry.name}
-                          </Text>
+                          <Text style={[styles.foodItemText, { fontWeight: "700", color: colors.text }]}>{entry.name}</Text>
                         </View>
                       </View>
                     );
@@ -1307,7 +1424,144 @@ export default function App() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Edit Entry Modal */}
+      <Modal
+        visible={editingEntry !== null}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setEditingEntry(null)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}
+          onPress={() => setEditingEntry(null)}
+        >
+          <Pressable
+            style={{
+              backgroundColor: colors.card,
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              padding: 24,
+              gap: 16,
+              borderTopWidth: 1,
+              borderTopColor: colors.border,
+            }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {/* Handle bar */}
+            <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: "center", marginBottom: 4 }} />
+
+            <Text style={{ fontSize: 18, fontWeight: "800", color: colors.text }}>
+              Edit {editingEntry?.type === "meal" ? "Meal" : "Exercise"}
+            </Text>
+
+            {editingEntry?.type === "meal" ? (
+              <>
+                <View style={{ gap: 10 }}>
+                  {[
+                    { label: "Calories (kcal)", key: "calories" as const },
+                    { label: "Protein (g)", key: "protein_g" as const },
+                    { label: "Carbs (g)", key: "carbs_g" as const },
+                    { label: "Fat (g)", key: "fat_g" as const },
+                  ].map(({ label, key }) => (
+                    <View key={key} style={{ gap: 4 }}>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.textMuted }}>{label}</Text>
+                      <TextInput
+                        value={editingEntry?.[key] ?? ""}
+                        onChangeText={(v) => setEditingEntry((prev) => prev ? { ...prev, [key]: v } : null)}
+                        keyboardType="numeric"
+                        style={{
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          borderRadius: 10,
+                          paddingHorizontal: 14,
+                          paddingVertical: 10,
+                          fontSize: 15,
+                          color: colors.text,
+                          backgroundColor: colors.inputBg,
+                        }}
+                      />
+                    </View>
+                  ))}
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={{ gap: 10 }}>
+                  <View style={{ gap: 4 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: colors.textMuted }}>Exercise Name</Text>
+                    <TextInput
+                      value={editingEntry?.name ?? ""}
+                      onChangeText={(v) => setEditingEntry((prev) => prev ? { ...prev, name: v } : null)}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        borderRadius: 10,
+                        paddingHorizontal: 14,
+                        paddingVertical: 10,
+                        fontSize: 15,
+                        color: colors.text,
+                        backgroundColor: colors.inputBg,
+                      }}
+                    />
+                  </View>
+                  <View style={{ gap: 4 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: colors.textMuted }}>Calories Burned</Text>
+                    <TextInput
+                      value={editingEntry?.calories_burned ?? ""}
+                      onChangeText={(v) => setEditingEntry((prev) => prev ? { ...prev, calories_burned: v } : null)}
+                      keyboardType="numeric"
+                      style={{
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        borderRadius: 10,
+                        paddingHorizontal: 14,
+                        paddingVertical: 10,
+                        fontSize: 15,
+                        color: colors.text,
+                        backgroundColor: colors.inputBg,
+                      }}
+                    />
+                  </View>
+                </View>
+              </>
+            )}
+
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+              <Pressable
+                onPress={() => setEditingEntry(null)}
+                style={{
+                  flex: 1,
+                  paddingVertical: 13,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  backgroundColor: isDarkMode ? "#27272a" : "#e4e4e7",
+                }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleSaveEdit}
+                disabled={savingEdit}
+                style={{
+                  flex: 2,
+                  paddingVertical: 13,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  backgroundColor: colors.primary,
+                  opacity: savingEdit ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: "700", color: "#ffffff" }}>
+                  {savingEdit ? "Saving…" : "Save Changes"}
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
+
   );
 }
 

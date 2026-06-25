@@ -89,3 +89,42 @@ class MealsRepo:
         total = sum(r["calories"] for r in rows)
         avg = float(total / max(1, days))
         return SummaryResponse(total_calories=total, avg_calories=avg, by_day=by_day)
+
+    async def delete_meal(self, user_id: UUID, meal_id: UUID) -> bool:
+        """Delete a meal by id, scoped to user_id. Returns True if a row was deleted."""
+        query = "delete from meals where id = $1 and user_id = $2"
+        result = await self.pool.execute(query, meal_id, user_id)
+        # asyncpg returns 'DELETE N'
+        return result.endswith("1")
+
+    async def update_meal(
+        self,
+        user_id: UUID,
+        meal_id: UUID,
+        patch: dict,
+    ) -> MealResponse | None:
+        """Partially update a meal. Only provided (non-None) fields are updated."""
+        # Build dynamic SET clause
+        allowed = ["calories", "protein_g", "carbs_g", "fat_g", "sugar_g", "fiber_g", "sodium_mg"]
+        sets = []
+        values: list = []
+        for col in allowed:
+            if col in patch and patch[col] is not None:
+                values.append(patch[col])
+                sets.append(f"{col} = ${len(values)}")
+        if not sets:
+            return None
+        values.extend([meal_id, user_id])
+        query = f"""
+            update meals
+            set {', '.join(sets)}
+            where id = ${len(values) - 1} and user_id = ${len(values)}
+            returning id, calories, protein_g, carbs_g, fat_g, sugar_g, fiber_g, sodium_mg, food_items, logged_at
+        """
+        row = await self.pool.fetchrow(query, *values)
+        if row is None:
+            return None
+        data = dict(row)
+        if isinstance(data.get("food_items"), str):
+            data["food_items"] = json.loads(data["food_items"])
+        return MealResponse(**data)

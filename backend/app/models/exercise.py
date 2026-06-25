@@ -25,3 +25,8 @@ class LogEntryResponse(BaseModel):
     type: Literal["meal", "exercise"]
     meal: MealResponse | None = None
     exercise: ExerciseResponse | None = None
+
+
+class PatchExerciseRequest(BaseModel):
+    name: str | None = None
+    calories_burned: int | None = None

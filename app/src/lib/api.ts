@@ -21,6 +21,10 @@ async function request<T>(
     const text = await response.text();
     throw new Error(text || `Request failed (${response.status})`);
   }
+  // 204 No Content — DELETE endpoints return no body
+  if (response.status === 204 || response.headers.get("content-length") === "0") {
+    return undefined as T;
+  }
   return (await response.json()) as T;
 }
 
@@ -101,4 +105,35 @@ export function deleteDayEntries(session: Session, date: string) {
     method: "DELETE",
   });
 }
+
+export function deleteMeal(session: Session, id: string) {
+  return request<void>(session, `/meals/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export function patchMeal(
+  session: Session,
+  id: string,
+  payload: Partial<{ calories: number; protein_g: number; carbs_g: number; fat_g: number; sugar_g: number; fiber_g: number; sodium_mg: number }>
+) {
+  return request<Meal>(session, `/meals/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteExercise(session: Session, id: string) {
+  return request<void>(session, `/exercises/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export function patchExercise(
+  session: Session,
+  id: string,
+  payload: Partial<{ name: string; calories_burned: number }>
+) {
+  return request<Exercise>(session, `/exercises/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 

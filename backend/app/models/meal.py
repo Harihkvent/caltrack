@@ -80,3 +80,13 @@ class SummaryResponse(BaseModel):
     total_calories: int
     avg_calories: float
     by_day: list[SummaryByDay]
+
+
+class PatchMealRequest(BaseModel):
+    calories: int | None = None
+    protein_g: Decimal | None = None
+    carbs_g: Decimal | None = None
+    fat_g: Decimal | None = None
+    sugar_g: Decimal | None = None
+    fiber_g: Decimal | None = None
+    sodium_mg: Decimal | None = None

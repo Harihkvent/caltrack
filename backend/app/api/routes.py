@@ -6,11 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.auth import current_user_id
 from app.db import get_pool
-from app.models.meal import CreateMealRequest, MealResponse, SummaryResponse
+from app.models.meal import CreateMealRequest, MealResponse, SummaryResponse, PatchMealRequest
 from app.models.profile import GoalsPatchRequest, ProfileResponse
 from app.models.weight import LogWeightRequest, WeightLogResponse
 from app.models.water import LogWaterRequest, WaterLogResponse, WaterDailySummary
-from app.models.exercise import ExerciseResponse, LogEntryResponse
+from app.models.exercise import ExerciseResponse, LogEntryResponse, PatchExerciseRequest
 from app.repos.profiles_repo import ProfilesRepo
 from app.repos.weight_repo import WeightRepo
 from app.repos.water_repo import WaterRepo
@@ -102,6 +102,52 @@ async def get_water_logs(
     pool = await get_pool()
     repo = WaterRepo(pool)
     return await repo.get_today_water(user_id, date_value)
+
+
+@router.delete("/meals/{meal_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_meal(meal_id: UUID, user_id: UUID = Depends(current_user_id)):
+    pool = await get_pool()
+    repo = MealsRepo(pool)
+    deleted = await repo.delete_meal(user_id, meal_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meal not found")
+
+
+@router.patch("/meals/{meal_id}", response_model=MealResponse)
+async def patch_meal(
+    meal_id: UUID,
+    payload: PatchMealRequest,
+    user_id: UUID = Depends(current_user_id),
+):
+    pool = await get_pool()
+    repo = MealsRepo(pool)
+    updated = await repo.update_meal(user_id, meal_id, payload.model_dump(exclude_none=True))
+    if updated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meal not found")
+    return updated
+
+
+@router.delete("/exercises/{exercise_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_exercise(exercise_id: UUID, user_id: UUID = Depends(current_user_id)):
+    pool = await get_pool()
+    repo = ExercisesRepo(pool)
+    deleted = await repo.delete_exercise(user_id, exercise_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exercise not found")
+
+
+@router.patch("/exercises/{exercise_id}", response_model=ExerciseResponse)
+async def patch_exercise(
+    exercise_id: UUID,
+    payload: PatchExerciseRequest,
+    user_id: UUID = Depends(current_user_id),
+):
+    pool = await get_pool()
+    repo = ExercisesRepo(pool)
+    updated = await repo.update_exercise(user_id, exercise_id, payload.model_dump(exclude_none=True))
+    if updated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exercise not found")
+    return updated
 
 
 @router.post("/entries", response_model=LogEntryResponse)

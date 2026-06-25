@@ -1,28 +1,36 @@
 {
   "expo": {
-    "name": "caltrack",
+    "name": "CalTrack",
     "slug": "caltrack",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#09090b"
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "icon": "./assets/icon.png"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#09090b"
       },
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png",
       "icon": "./assets/icon.png",
-      "name": "caltrack",
-      "shortName": "caltrack"
+      "name": "CalTrack",
+      "shortName": "CalTrack",
+      "description": "AI-powered nutrition and fitness tracker",
+      "bundler": "metro",
+      "themeColor": "#09090b",
+      "backgroundColor": "#09090b"
     }
   }
 }
