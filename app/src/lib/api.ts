@@ -3,6 +3,37 @@ import type { Meal, Profile, Summary, WeightLog, WaterLog, WaterDailySummary, Ex
 
 const apiBaseUrl = (process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
+
+/** Extract a readable error message from any server error body. */
+function parseErrorMessage(text: string, status: number): string {
+  try {
+    const json = JSON.parse(text);
+
+    // FastAPI validation error: { detail: [ { msg, loc, ... }, ... ] }
+    if (Array.isArray(json?.detail)) {
+      return json.detail
+        .map((d: { msg?: string; loc?: string[] }) => {
+          const field = d.loc ? d.loc.filter((s) => s !== "body").join(" → ") : "";
+          const msg = d.msg ?? "Invalid value";
+          return field ? `${field}: ${msg}` : msg;
+        })
+        .join("\n");
+    }
+
+    // FastAPI plain string detail: { detail: "Some message" }
+    if (typeof json?.detail === "string") return json.detail;
+
+    // Any other top-level message field
+    if (typeof json?.message === "string") return json.message;
+    if (typeof json?.error === "string") return json.error;
+  } catch {
+    // Not JSON — use the raw text if it's short and readable
+    if (text && text.length < 200 && !text.startsWith("<")) return text;
+  }
+
+  return `Something went wrong (${status})`;
+}
+
 async function request<T>(
   session: Session,
   path: string,
@@ -19,7 +50,7 @@ async function request<T>(
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Request failed (${response.status})`);
+    throw new Error(parseErrorMessage(text, response.status));
   }
   // 204 No Content — DELETE endpoints return no body
   if (response.status === 204 || response.headers.get("content-length") === "0") {
@@ -27,6 +58,7 @@ async function request<T>(
   }
   return (await response.json()) as T;
 }
+
 
 export function createMeal(
   session: Session,

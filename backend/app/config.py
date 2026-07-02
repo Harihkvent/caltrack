@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-flash-lite"
 
     groq_api_key: str = ""
-    groq_model: str = "llama-3.3-70b-versatile"
-    groq_vision_model: str = "llama-3.2-11b-vision-preview"
+    groq_model: str = "openai/gpt-oss-120b"
+    groq_vision_model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
     primary_provider: str = "groq"  # "groq" or "gemini"; the other is used as fallback
 
 

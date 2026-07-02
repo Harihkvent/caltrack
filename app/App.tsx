@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import * as ImagePicker from "expo-image-picker";
 import type { Session } from "@supabase/supabase-js";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Modal,
   Platform,
   Pressable,
@@ -50,11 +51,41 @@ function generateIdempotencyKey() {
   });
 }
 
+// ─── Toast system ────────────────────────────────────────────────────────────
+type ToastType = "error" | "warning" | "info";
+interface Toast { message: string; type: ToastType; id: number; }
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  // Toast notification state (replaces raw error state for in-app feedback)
+  const [toast, setToast] = useState<Toast | null>(null);
+  const toastAnim = useRef(new Animated.Value(0)).current;
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((message: string, type: ToastType = "error") => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    const id = Date.now();
+    setToast({ message, type, id });
+    toastAnim.setValue(0);
+    Animated.spring(toastAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 80,
+      friction: 8,
+    }).start();
+    toastTimerRef.current = setTimeout(() => dismissToast(), 4500);
+  }, []);
+
+  const dismissToast = useCallback(() => {
+    Animated.timing(toastAnim, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => setToast(null));
+  }, []);
 
   // Navigation tab: 'journal' | 'weight' | 'goals'
   const [activeTab, setActiveTab] = useState<"journal" | "weight" | "goals">("journal");
@@ -64,6 +95,7 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [loadingAuth, setLoadingAuth] = useState(false);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Journal states
   const [source, setSource] = useState<"text" | "photo">("text");
@@ -169,7 +201,6 @@ export default function App() {
 
   async function loadAll(activeSession: Session) {
     setLoadingData(true);
-    setError(null);
     try {
       const [mealsResult, exercisesResult, summaryResult, profileResult, weightResult, waterResult] = await Promise.all([
         getMeals(activeSession, selectedDate),
@@ -186,7 +217,7 @@ export default function App() {
       setWeightLogs(weightResult);
       setWaterSummary(waterResult);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed loading data");
+      showToast(err instanceof Error ? err.message : "Failed loading data");
     } finally {
       setLoadingData(false);
     }
@@ -194,7 +225,7 @@ export default function App() {
 
   // Auth Operations
   async function signIn() {
-    setError(null);
+    setAuthError(null);
     setAuthMessage(null);
     setLoadingAuth(true);
     try {
@@ -202,34 +233,38 @@ export default function App() {
         email: email.trim(),
         password,
       });
-      if (signInError) setError(signInError.message);
+      if (signInError) setAuthError(signInError.message);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sign in");
+      setAuthError(err instanceof Error ? err.message : "Failed to sign in");
     } finally {
       setLoadingAuth(false);
     }
   }
 
   async function signUp() {
-    setError(null);
+    setAuthError(null);
     setAuthMessage(null);
     setLoadingAuth(true);
     try {
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: email.trim(),
         password,
+        options: {
+          // Redirect to the deployed app after email confirmation
+          emailRedirectTo: "https://caltrack-bay.vercel.app",
+        },
       });
       if (signUpError) {
-        setError(signUpError.message);
+        setAuthError(signUpError.message);
       } else {
         if (data.session) {
           setAuthMessage("Sign up successful! Logging you in...");
         } else {
-          setAuthMessage("Sign up successful! Please check your email for a verification link.");
+          setAuthMessage("Check your email for a verification link. Tap it to confirm your account.");
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sign up");
+      setAuthError(err instanceof Error ? err.message : "Failed to sign up");
     } finally {
       setLoadingAuth(false);
     }
@@ -243,7 +278,7 @@ export default function App() {
     setWeightLogs([]);
     setWaterSummary(null);
     setAuthMessage(null);
-    setError(null);
+    setAuthError(null);
   }
 
   async function resetDayLogs() {
@@ -257,16 +292,15 @@ export default function App() {
           text: "Reset",
           style: "destructive",
           onPress: async () => {
-            setError(null);
             try {
               await deleteDayEntries(session, selectedDate);
               setMeals([]);
               setExercises([]);
               setWaterSummary({ total_ml: 0, logs: [] });
               await loadAll(session);
-              Alert.alert("Success", "All entries cleared for this day.");
+              showToast("All entries cleared for this day.", "info");
             } catch (err) {
-              setError(err instanceof Error ? err.message : "Failed to clear logs");
+              showToast(err instanceof Error ? err.message : "Failed to clear logs");
             }
           },
         },
@@ -274,11 +308,11 @@ export default function App() {
     );
   }
 
-  // Choose photo for meal estimation
+  // Choose photo for meal estimation from library
   async function choosePhoto() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      setError("Photo library permission denied");
+      showToast("Photo library access was denied. Enable it in Settings to upload food photos.", "warning");
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -291,10 +325,53 @@ export default function App() {
     }
   }
 
+  // Take photo with camera for meal estimation
+  async function takePhoto() {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      showToast("Camera access was denied. Enable it in Settings to take photos.", "warning");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.6,
+      base64: true,
+    });
+    if (!result.canceled && result.assets[0]?.base64) {
+      setPhotoDataUrl(`data:image/jpeg;base64,${result.assets[0].base64}`);
+    }
+  }
+
+  // Prompt choice between Camera & Library on native platforms
+  async function selectPhotoSource() {
+    if (Platform.OS === "web") {
+      await choosePhoto();
+      return;
+    }
+
+    Alert.alert(
+      "Upload Food Photo",
+      "Would you like to take a new photo with your camera or select one from your library?",
+      [
+        {
+          text: "Take Photo (Camera)",
+          onPress: () => void takePhoto(),
+        },
+        {
+          text: "Choose from Library",
+          onPress: () => void choosePhoto(),
+        },
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+      ]
+    );
+  }
+
+
   // Submit Entry Log (Meals/Exercises)
   async function submitMeal() {
     if (!session) return;
-    setError(null);
     setSubmittingMeal(true);
     try {
       const payload =
@@ -315,7 +392,7 @@ export default function App() {
       setPhotoDataUrl("");
       await loadAll(session);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed logging entry");
+      showToast(err instanceof Error ? err.message : "Failed logging entry");
     } finally {
       setSubmittingMeal(false);
     }
@@ -334,7 +411,7 @@ export default function App() {
           setExercises((prev) => prev.filter((e) => e.id !== id));
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to delete entry");
+        showToast(err instanceof Error ? err.message : "Failed to delete entry");
       }
     };
     // Alert.alert doesn't work on web — use window.confirm instead
@@ -372,7 +449,7 @@ export default function App() {
       }
       setEditingEntry(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save changes");
+      showToast(err instanceof Error ? err.message : "Failed to save changes");
     } finally {
       setSavingEdit(false);
     }
@@ -381,7 +458,6 @@ export default function App() {
   // Weight Operations
   async function submitWeight() {
     if (!session || !weightInput) return;
-    setError(null);
     setSubmittingWeight(true);
     setWeightSuccess("");
     try {
@@ -391,7 +467,7 @@ export default function App() {
       await loadAll(session);
       setTimeout(() => setWeightSuccess(""), 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to log weight");
+      showToast(err instanceof Error ? err.message : "Failed to log weight");
     } finally {
       setSubmittingWeight(false);
     }
@@ -400,7 +476,6 @@ export default function App() {
   // Water Stepper Operations
   async function adjustWater(increment: boolean) {
     if (!session) return;
-    setError(null);
     setSubmittingWater(true);
     try {
       // 250ml = 1 cup. Decrement adds -250ml to total database entries
@@ -413,7 +488,7 @@ export default function App() {
       await logWater(session, amount);
       await loadAll(session);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update water");
+      showToast(err instanceof Error ? err.message : "Failed to update water");
     } finally {
       setSubmittingWater(false);
     }
@@ -426,11 +501,10 @@ export default function App() {
     const h = Number(calcHeight);
     const a = Number(calcAge);
     if (!w || !h || !a) {
-      setError("Please fill out all calculator fields.");
+      showToast("Please fill out all calculator fields.", "warning");
       return;
     }
 
-    setError(null);
     setSavingGoals(true);
 
     // Mifflin-St Jeor Equation
@@ -472,7 +546,7 @@ export default function App() {
         setTimeout(() => setGoalsSuccessMessage(""), 5000);
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : "Failed saving calculated goals");
+        showToast(err instanceof Error ? err.message : "Failed saving calculated goals");
       })
       .finally(() => {
         setSavingGoals(false);
@@ -526,8 +600,23 @@ export default function App() {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]}>
         <View style={[styles.authContainer, { backgroundColor: colors.bg }]}>
-          <Text style={[styles.authTitle, { color: colors.text }]}>CalTrack</Text>
-          <Text style={[styles.authSubtitle, { color: colors.textMuted }]}>Journale-inspired AI nutrition tracking</Text>
+          {/* Brand */}
+          <View style={{ alignItems: "center", gap: 6, marginBottom: 8 }}>
+            <Text style={[styles.authTitle, { color: colors.text }]}>CalTrack</Text>
+            <Text style={[styles.authSubtitle, { color: colors.textMuted }]}>AI-powered nutrition tracking</Text>
+          </View>
+
+          {/* Auth feedback banners */}
+          {authMessage ? (
+            <View style={[styles.authAlertBox, { backgroundColor: isDarkMode ? "#052e16" : "#f0fdf4", borderColor: "#16a34a" }]}>
+              <Text style={{ fontSize: 13, color: "#16a34a", fontWeight: "600", textAlign: "center" }}>✓ {authMessage}</Text>
+            </View>
+          ) : null}
+          {authError ? (
+            <View style={[styles.authAlertBox, { backgroundColor: isDarkMode ? "#450a0a" : "#fef2f2", borderColor: "#ef4444" }]}>
+              <Text style={{ fontSize: 13, color: "#ef4444", fontWeight: "600", textAlign: "center" }}>⚠ {authError}</Text>
+            </View>
+          ) : null}
 
           <TextInput
             value={email}
@@ -548,6 +637,7 @@ export default function App() {
             editable={!loadingAuth}
           />
 
+          {/* Email/password buttons */}
           <View style={styles.authButtonGroup}>
             <Pressable
               style={[styles.primaryButton, loadingAuth && styles.disabledButton, { backgroundColor: colors.primary }]}
@@ -564,9 +654,6 @@ export default function App() {
               <Text style={[styles.buttonText, { color: colors.text }]}>{loadingAuth ? "Signing Up..." : "Sign Up"}</Text>
             </Pressable>
           </View>
-
-          {authMessage ? <Text style={styles.successText}>{authMessage}</Text> : null}
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </View>
         <StatusBar style={isDarkMode ? "light" : "dark"} />
       </SafeAreaView>
@@ -854,7 +941,7 @@ export default function App() {
 
                 {source === "photo" && (
                   <Pressable
-                    onPress={choosePhoto}
+                    onPress={selectPhotoSource}
                     style={[
                       styles.compactIconButton,
                       { backgroundColor: photoDataUrl ? "#065f46" : (isDarkMode ? "#27272a" : "#e4e4e7") },
@@ -1094,11 +1181,33 @@ export default function App() {
         )}
       </View>
 
-      {/* Global general error banner */}
-      {error && (
-        <View style={styles.globalErrorBanner}>
-          <Text style={styles.globalErrorText}>{error}</Text>
-        </View>
+      {/* ── Animated Toast Notification ─────────────────────────────────── */}
+      {toast && (
+        <Animated.View
+          style={[
+            styles.toastContainer,
+            {
+              opacity: toastAnim,
+              transform: [
+                {
+                  translateY: toastAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-20, 0],
+                  }),
+                },
+              ],
+              backgroundColor:
+                toast.type === "error" ? "#ef4444" :
+                toast.type === "warning" ? "#f97316" :
+                "#10b981",
+            },
+          ]}
+        >
+          <Text style={styles.toastMessage} numberOfLines={3}>{toast.message}</Text>
+          <Pressable onPress={dismissToast} hitSlop={10} style={styles.toastClose}>
+            <Text style={styles.toastCloseText}>✕</Text>
+          </Pressable>
+        </Animated.View>
       )}
 
       {/* Premium Dark/Light Nav Tab bar */}
@@ -2079,20 +2188,50 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
   },
-  globalErrorBanner: {
+  authAlertBox: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  // ── Toast notification ──────────────────────────────────────────────────────
+  toastContainer: {
     position: "absolute",
-    bottom: 74,
+    top: 16,
     left: 16,
     right: 16,
-    backgroundColor: "#ef4444",
-    borderRadius: 8,
-    padding: 10,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 9999,
   },
-  globalErrorText: {
+  toastMessage: {
+    flex: 1,
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 18,
+  },
+  toastClose: {
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.25)",
+  },
+  toastCloseText: {
     color: "#ffffff",
     fontSize: 12,
     fontWeight: "700",
-    textAlign: "center",
   },
 
   // Bottom Navigation tab bar (Journable style)
