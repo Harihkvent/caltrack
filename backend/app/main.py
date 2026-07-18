@@ -22,8 +22,11 @@ logger = logging.getLogger("caltrack")
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     logger.info("Starting up — connecting to database...")
-    await get_pool()
-    logger.info("Database pool ready ✓")
+    try:
+        await get_pool()
+        logger.info("Database pool ready ✓")
+    except Exception:
+        logger.exception("Database pool init failed at startup; continuing to serve /health")
     yield
     logger.info("Shutting down — closing database pool...")
     await close_pool()
