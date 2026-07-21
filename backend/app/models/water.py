@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class LogWaterRequest(BaseModel):
-    amount_ml: int = Field(..., ge=1, le=5000)
+    amount_ml: int = Field(..., ge=-5000, le=5000)
 
 
 class WaterLogResponse(BaseModel):

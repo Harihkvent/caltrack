@@ -28,5 +28,5 @@ class WaterRepo:
         """
         rows = await self.pool.fetch(query, user_id, start, end)
         logs = [WaterLogResponse(**dict(row)) for row in rows]
-        total = sum(log.amount_ml for log in logs)
+        total = max(0, sum(log.amount_ml for log in logs))
         return WaterDailySummary(total_ml=total, logs=logs)
