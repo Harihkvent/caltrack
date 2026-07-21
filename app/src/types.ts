@@ -72,3 +72,13 @@ export type EntryResponse = {
   exercise?: Exercise;
 };
 
+export type DashboardData = {
+  profile: Profile;
+  meals: Meal[];
+  exercises: Exercise[];
+  water: WaterDailySummary;
+  weight_history: WeightLog[];
+  summary: Summary;
+};
+
+

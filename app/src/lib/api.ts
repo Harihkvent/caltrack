@@ -1,5 +1,5 @@
 import type { Session } from "@supabase/supabase-js";
-import type { Meal, Profile, Summary, WeightLog, WaterLog, WaterDailySummary, Exercise, EntryResponse } from "../types";
+import type { Meal, Profile, Summary, WeightLog, WaterLog, WaterDailySummary, Exercise, EntryResponse, DashboardData } from "../types";
 
 const apiBaseUrl = (process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
@@ -39,24 +39,52 @@ async function request<T>(
   path: string,
   init?: RequestInit
 ): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `${["Be", "arer"].join("")} ${session.access_token}`,
-      ...(init?.headers ?? {}),
-    },
-  });
+  const maxRetries = 3;
+  let attempt = 0;
+  let lastError: any = null;
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(parseErrorMessage(text, response.status));
+  while (attempt <= maxRetries) {
+    try {
+      const response = await fetch(`${apiBaseUrl}${path}`, {
+        ...init,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `${["Be", "arer"].join("")} ${session.access_token}`,
+          ...(init?.headers ?? {}),
+        },
+      });
+
+      if (!response.ok) {
+        // Only retry on server-side errors (5xx), not client errors (4xx)
+        if (response.status >= 500 && attempt < maxRetries) {
+          throw new Error(`Server error: ${response.status}`);
+        }
+        const text = await response.text();
+        throw new Error(parseErrorMessage(text, response.status));
+      }
+
+      // 204 No Content — DELETE endpoints return no body
+      if (response.status === 204 || response.headers.get("content-length") === "0") {
+        return undefined as T;
+      }
+      return (await response.json()) as T;
+    } catch (error: any) {
+      lastError = error;
+      
+      const isNetworkIssue = error instanceof TypeError || error.message?.includes("Network") || error.message?.includes("failed to fetch");
+      const isServerError = error.message?.startsWith("Server error");
+      
+      if (attempt >= maxRetries || (!isNetworkIssue && !isServerError)) {
+        throw error;
+      }
+
+      attempt++;
+      const delay = Math.pow(2, attempt) * 300 + Math.random() * 100; // Exponential backoff + jitter
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
   }
-  // 204 No Content — DELETE endpoints return no body
-  if (response.status === 204 || response.headers.get("content-length") === "0") {
-    return undefined as T;
-  }
-  return (await response.json()) as T;
+
+  throw lastError ?? new Error("Request failed after retries");
 }
 
 
@@ -167,5 +195,10 @@ export function patchExercise(
     body: JSON.stringify(payload),
   });
 }
+
+export function getDashboard(session: Session, date: string) {
+  return request<DashboardData>(session, `/dashboard?date=${encodeURIComponent(date)}`);
+}
+
 
 

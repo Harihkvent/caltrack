@@ -33,6 +33,7 @@ import {
   patchMeal,
   deleteExercise,
   patchExercise,
+  getDashboard,
 } from "./src/lib/api";
 import { supabase } from "./src/lib/supabase";
 import type { Meal, Profile, Summary, WeightLog, WaterDailySummary, Exercise } from "./src/types";
@@ -196,26 +197,19 @@ export default function App() {
 
   useEffect(() => {
     if (!session) return;
-    void loadAll(session);
+    void loadDashboard(session);
   }, [session, selectedDate]);
 
-  async function loadAll(activeSession: Session) {
+  async function loadDashboard(activeSession: Session) {
     setLoadingData(true);
     try {
-      const [mealsResult, exercisesResult, summaryResult, profileResult, weightResult, waterResult] = await Promise.all([
-        getMeals(activeSession, selectedDate),
-        getExercises(activeSession, selectedDate),
-        getSummary(activeSession, "week"),
-        getGoals(activeSession),
-        getWeightHistory(activeSession),
-        getWaterLogs(activeSession, selectedDate),
-      ]);
-      setMeals(mealsResult);
-      setExercises(exercisesResult);
-      setSummary(summaryResult);
-      setProfile(profileResult);
-      setWeightLogs(weightResult);
-      setWaterSummary(waterResult);
+      const dashboard = await getDashboard(activeSession, selectedDate);
+      setMeals(dashboard.meals);
+      setExercises(dashboard.exercises);
+      setSummary(dashboard.summary);
+      setProfile(dashboard.profile);
+      setWeightLogs(dashboard.weight_history);
+      setWaterSummary(dashboard.water);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed loading data");
     } finally {
@@ -297,7 +291,7 @@ export default function App() {
               setMeals([]);
               setExercises([]);
               setWaterSummary({ total_ml: 0, logs: [] });
-              await loadAll(session);
+              await loadDashboard(session);
               showToast("All entries cleared for this day.", "info");
             } catch (err) {
               showToast(err instanceof Error ? err.message : "Failed to clear logs");
@@ -390,7 +384,7 @@ export default function App() {
       await logEntry(session, payload);
       setRawInput("");
       setPhotoDataUrl("");
-      await loadAll(session);
+      await loadDashboard(session);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed logging entry");
     } finally {
@@ -461,10 +455,10 @@ export default function App() {
     setSubmittingWeight(true);
     setWeightSuccess("");
     try {
-      await logWeight(session, Number(weightInput));
+      const newWeightLog = await logWeight(session, Number(weightInput));
       setWeightInput("");
       setWeightSuccess("Weight logged successfully!");
-      await loadAll(session);
+      setWeightLogs((prev) => [newWeightLog, ...prev]);
       setTimeout(() => setWeightSuccess(""), 3000);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to log weight");
@@ -485,8 +479,14 @@ export default function App() {
         setSubmittingWater(false);
         return;
       }
-      await logWater(session, amount);
-      await loadAll(session);
+      const newLog = await logWater(session, amount);
+      setWaterSummary((prev) => {
+        if (!prev) return { total_ml: Math.max(0, amount), logs: [newLog] };
+        return {
+          total_ml: Math.max(0, prev.total_ml + amount),
+          logs: amount > 0 ? [newLog, ...prev.logs] : prev.logs.slice(1),
+        };
+      });
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to update water");
     } finally {

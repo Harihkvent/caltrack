@@ -11,6 +11,7 @@ from app.models.profile import GoalsPatchRequest, ProfileResponse
 from app.models.weight import LogWeightRequest, WeightLogResponse
 from app.models.water import LogWaterRequest, WaterLogResponse, WaterDailySummary
 from app.models.exercise import ExerciseResponse, LogEntryResponse, PatchExerciseRequest
+from app.models.dashboard import DashboardResponse
 from app.repos.profiles_repo import ProfilesRepo
 from app.repos.weight_repo import WeightRepo
 from app.repos.water_repo import WaterRepo
@@ -18,6 +19,7 @@ from app.repos.meals_repo import MealsRepo
 from app.repos.exercises_repo import ExercisesRepo
 from app.services.estimator import EstimatorService, EstimationFailed
 from app.services.meal_service import MealService
+from asyncio import gather
 
 router = APIRouter()
 
@@ -217,4 +219,37 @@ async def delete_entries(
             await conn.execute("delete from water_logs where user_id = $1 and logged_at >= $2 and logged_at < $3", user_id, start, end)
             
     return {"status": "success", "message": f"Cleared all entries for {date_value}"}
+
+
+@router.get("/dashboard", response_model=DashboardResponse)
+async def get_dashboard(
+    date_value: date = Query(alias="date"),
+    user_id: UUID = Depends(current_user_id)
+):
+    pool = await get_pool()
+    profiles_repo = ProfilesRepo(pool)
+    meals_repo = MealsRepo(pool)
+    exercises_repo = ExercisesRepo(pool)
+    water_repo = WaterRepo(pool)
+    weight_repo = WeightRepo(pool)
+    
+    # Fetch all data concurrently using database pool
+    profile, meals, exercises, water, weight_history, summary = await gather(
+        profiles_repo.get_profile(user_id),
+        meals_repo.get_meals_for_day(user_id, date_value),
+        exercises_repo.get_exercises_for_day(user_id, date_value),
+        water_repo.get_today_water(user_id, date_value),
+        weight_repo.get_weight_history(user_id),
+        meals_repo.get_summary(user_id, "week")
+    )
+    
+    return DashboardResponse(
+        profile=profile,
+        meals=meals,
+        exercises=exercises,
+        water=water,
+        weight_history=weight_history,
+        summary=summary
+    )
+
 
