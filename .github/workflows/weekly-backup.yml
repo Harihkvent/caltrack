@@ -21,7 +21,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client-17
           echo "/usr/lib/postgresql/17/bin" >> $GITHUB_PATH
-      - name: Validate and Prepare Database URL
+      - name: Validate and Prepare Database URLs
         env:
           RAW_DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
@@ -37,7 +37,7 @@ jobs:
             exit 1
           fi
 
-          CONVERTED_URL=$(python3 -c '
+          DIRECT_DATABASE_URL=$(python3 -c '
           import os, urllib.parse, sys
           url = os.environ.get("RAW_DATABASE_URL", "")
           try:
@@ -57,14 +57,25 @@ jobs:
                       sys.exit(0)
           except Exception:
               pass
-          print(url)
+          print("")
           ')
 
-          echo "DATABASE_URL=$CONVERTED_URL" >> $GITHUB_ENV
+          echo "RAW_DATABASE_URL=$RAW_DATABASE_URL" >> $GITHUB_ENV
+          echo "DIRECT_DATABASE_URL=$DIRECT_DATABASE_URL" >> $GITHUB_ENV
       - name: Create backup
         run: |
           mkdir -p backups
-          pg_dump "$DATABASE_URL" --format=custom --no-owner --no-acl > "backups/caltrack-$(date +%F).dump"
+          BACKUP_PATH="backups/caltrack-$(date +%F).dump"
+
+          if [ -n "$DIRECT_DATABASE_URL" ]; then
+            echo "Attempting direct Supabase database connection for backup..."
+            if pg_dump "$DIRECT_DATABASE_URL" --format=custom --no-owner --no-acl > "$BACKUP_PATH"; then
+              exit 0
+            fi
+            echo "Direct connection failed. Retrying with original SUPABASE_DB_URL..."
+          fi
+
+          pg_dump "$RAW_DATABASE_URL" --format=custom --no-owner --no-acl > "$BACKUP_PATH"
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
