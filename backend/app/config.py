@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     app_cors_origins: str = "*"
 
     database_url: str = "postgresql://localhost/postgres"
+    db_connect_max_attempts: int = 5
+    db_connect_retry_delay_seconds: float = 2.0
 
     supabase_url: str = ""
     supabase_jwks_url: str = ""

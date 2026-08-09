@@ -6,7 +6,7 @@ AI calorie tracker scaffold with FastAPI backend, Supabase schema, and infra cro
 
 - `/app` — Expo app (Android + web/PWA for iOS home-screen use).
 - `/backend` — FastAPI API, services, repositories, and SQL migrations.
-- `/infra/github-actions` — keep-warm and weekly-backup workflow templates.
+- `/infra/github-actions` — keep-warm, db-heartbeat, and weekly-backup workflow templates.
 
 ## Quick start (backend)
 
@@ -26,7 +26,7 @@ Optional backend env:
 
 ## Apply schema
 
-Run `/home/runner/work/caltrack/caltrack/backend/migrations/001_init.sql` in Supabase SQL editor.
+Run `/home/runner/work/caltrack/caltrack/backend/migrations/001_init.sql`, `/home/runner/work/caltrack/caltrack/backend/migrations/002_features.sql`, `/home/runner/work/caltrack/caltrack/backend/migrations/003_exercises.sql`, and `/home/runner/work/caltrack/caltrack/backend/migrations/004_db_heartbeat.sql` in Supabase SQL editor.
 
 ## Quick start (mobile/web app)
 
