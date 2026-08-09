@@ -99,3 +99,17 @@ Expo Application Services (EAS) offers a **Free Tier** allowing up to **30 free 
    ```
 7. When the build completes, Expo will output a QR code in the terminal and a download link.
 8. Scan the QR code with your Android phone to download and install the **CalTrack app** directly on your device!
+
+---
+
+## 5. Keep Supabase DB Active (Heartbeat Workflow)
+
+To reduce free-tier inactivity pauses, enable the `db-heartbeat` GitHub Actions workflow (`.github/workflows/db-heartbeat.yml`).
+
+Required secret:
+- `SUPABASE_DB_URL`
+
+What it does every 5 days:
+- Runs a read query (`SELECT 1`)
+- Upserts a tiny heartbeat row in `db_heartbeat.last_seen`
+- Fails loudly with workflow error logs if the DB is unreachable

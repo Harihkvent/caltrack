@@ -1,0 +1,57 @@
+name: db-heartbeat
+
+on:
+  schedule:
+    - cron: "0 3 */5 * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install postgres client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> $GITHUB_PATH
+
+      - name: Validate DB secret
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret is missing."
+            exit 1
+          fi
+
+      - name: Heartbeat read and write
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          create table if not exists db_heartbeat (
+            id boolean primary key default true,
+            last_seen timestamptz not null default now(),
+            source text not null default 'github-actions'
+          );
+
+          select 1;
+
+          insert into db_heartbeat (id, last_seen, source)
+          values (true, now(), 'github-actions')
+          on conflict (id) do update
+            set last_seen = excluded.last_seen,
+                source = excluded.source;
+
+          select last_seen, source from db_heartbeat where id = true;
+          SQL
+
+      - name: Alert on failure
+        if: failure()
+        run: |
+          echo "::error::DB heartbeat failed. The database may be paused or unreachable."
